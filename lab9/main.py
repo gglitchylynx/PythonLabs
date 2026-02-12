@@ -1,72 +1,61 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 
-
-app = Flask('Furniture store')
+app = Flask('Work Experience Tracker')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///project.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
 
-# products = [
-#     {'prod_name': 'sofa',
-#      'price': 12000,
-#      'in_stock': False,
-#      'id': 0},
-#     {'prod_name': 'table',
-#      'price': 6000,
-#      'in_stock': True,
-#      'id': 1},
-#     {'prod_name': 'chair',
-#      'price': 8000,
-#      'in_stock': False,
-#      'id': 2},
-# ]
-
-
-class Product(db.Model):
+class WorkPlace(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    prod_name = db.Column(db.String(300))
-    price = db.Column(db.Integer)
-    in_stock = db.Column(db.Boolean, default=True)
-
+    company = db.Column(db.String(300), nullable=False)
+    term = db.Column(db.Integer, nullable=False)
+    
     def __repr__(self):
-        return f'Product{self.id}. {self.prod_name} - {self.price} rub.'
+        return f'WorkPlace: {self.company} - {self.term} мес.'
 
 
 @app.route('/')
 def main():
-    products = Product.query.all()
-    return render_template('index.html', products_list=products)
-
-
-@app.route('/in_stock/<product_id>', methods=['PATCH'])
-def modify_product(product_id):
-    product = Product.query.get(product_id)
-    product.in_stock = request.json['in_stock']
-    db.session.commit()
-    # global products
-    # in_stock = request.json['in_stock']
-    # for product in products:
-    #     if product['id'] == product_id:
-    #         product.update({'in_stock': in_stock})
-    # return 'OK'
+    workplaces = WorkPlace.query.all()
+    total_term = sum(work.term for work in workplaces)
+    return render_template('index.html', workplaces=workplaces, total_term=total_term)
 
 
 @app.route('/add', methods=['POST'])
-def add_product():
-    data = request.json
-    product = Product(**data)
-    db.session.add(product)
-    db.session.commit()
+def add_workplace():
+    try:
+        data = request.json
+        workplace = WorkPlace(
+            company=data['company'],
+            term=int(data['term'])
+        )
+        db.session.add(workplace)
+        db.session.commit()
+        
+        workplaces = WorkPlace.query.all()
+        total_term = sum(work.term for work in workplaces)
+        
+        return jsonify({
+            'success': True,
+            'total_term': total_term,
+            'workplaces': [{'id': w.id, 'company': w.company, 'term': w.term} for w in workplaces]
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
 
-    # id_last = products[-1]['id']
-    # id_new = id_last + 1
-    # data['id'] = id_new
-    # products.append(data)
-    return 'OK'
 
+@app.route('/clear', methods=['DELETE'])
+def clear_all():
+    try:
+        WorkPlace.query.delete()
+        db.session.commit()
+        return jsonify({'success': True, 'total_term': 0})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
 
 
 if __name__ == '__main__':
